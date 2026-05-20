@@ -220,6 +220,7 @@ __marimo__/
 # Node / Vite
 node_modules/
 .vite/
+dist-single/
 *.log
 .DS_Store
 
