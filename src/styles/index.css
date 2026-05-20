@@ -812,3 +812,47 @@ input::placeholder, textarea::placeholder {
 
 /* Header actions */
 .header-actions { display: flex; gap: 8px; align-items: center; }
+
+/* Toggle row (checkbox label) */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+}
+.toggle-row:hover { background: rgba(255,255,255,0.06); }
+.toggle-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 100px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+.toggle-row input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+.toggle-row input[type="checkbox"]:checked {
+  background: linear-gradient(135deg, var(--accent), #6b4ef0);
+}
+.toggle-row input[type="checkbox"]:checked::after {
+  transform: translateX(16px);
+}

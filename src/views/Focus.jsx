@@ -1,11 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../lib/icons'
+import { load, save } from '../lib/storage'
 
-const MODES = {
-  focus: { label: 'Focus', mins: 25, color: 'var(--accent)' },
-  short: { label: 'Short break', mins: 5, color: 'var(--accent-2)' },
-  long: { label: 'Long break', mins: 15, color: 'var(--success)' },
+const SETTINGS_KEY = 'flow.timerSettings'
+
+const DEFAULTS = {
+  focus: 25,
+  short: 5,
+  long: 15,
+  autoStartBreaks: false,
+  sound: true,
 }
+
+const LABELS = {
+  focus: 'Focus',
+  short: 'Short break',
+  long: 'Long break',
+}
+
+const PRESETS = [
+  { name: 'Classic', focus: 25, short: 5, long: 15 },
+  { name: 'Long focus', focus: 50, short: 10, long: 30 },
+  { name: 'Deep work', focus: 90, short: 20, long: 30 },
+  { name: 'Sprint', focus: 15, short: 3, long: 10 },
+]
 
 function format(secs) {
   const m = Math.floor(secs / 60)
@@ -31,10 +49,19 @@ function ding() {
 }
 
 export default function Focus({ onSessionComplete }) {
+  const [settings, setSettings] = useState(() => ({ ...DEFAULTS, ...load(SETTINGS_KEY, {}) }))
   const [mode, setMode] = useState('focus')
-  const [secs, setSecs] = useState(MODES.focus.mins * 60)
+  const [secs, setSecs] = useState(settings.focus * 60)
   const [running, setRunning] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const timerRef = useRef(null)
+
+  useEffect(() => { save(SETTINGS_KEY, settings) }, [settings])
+
+  useEffect(() => {
+    setSecs(settings[mode] * 60)
+    setRunning(false)
+  }, [mode, settings.focus, settings.short, settings.long])
 
   useEffect(() => {
     if (!running) return
@@ -43,7 +70,7 @@ export default function Focus({ onSessionComplete }) {
         if (s <= 1) {
           clearInterval(timerRef.current)
           setRunning(false)
-          ding()
+          if (settings.sound) ding()
           if (mode === 'focus') onSessionComplete?.()
           return 0
         }
@@ -51,20 +78,15 @@ export default function Focus({ onSessionComplete }) {
       })
     }, 1000)
     return () => clearInterval(timerRef.current)
-  }, [running, mode, onSessionComplete])
+  }, [running, mode, onSessionComplete, settings.sound])
 
-  useEffect(() => {
-    setSecs(MODES[mode].mins * 60)
-    setRunning(false)
-  }, [mode])
-
-  const total = MODES[mode].mins * 60
-  const progress = (total - secs) / total
+  const total = settings[mode] * 60
+  const progress = total === 0 ? 0 : (total - secs) / total
   const radius = 140
   const circumference = 2 * Math.PI * radius
   const offset = circumference - progress * circumference
 
-  const reset = () => { setRunning(false); setSecs(MODES[mode].mins * 60) }
+  const reset = () => { setRunning(false); setSecs(settings[mode] * 60) }
   const skip = () => { setRunning(false); setSecs(0); if (mode === 'focus') onSessionComplete?.() }
 
   return (
@@ -72,20 +94,27 @@ export default function Focus({ onSessionComplete }) {
       <div className="page-header">
         <div>
           <div className="page-title">Focus</div>
-          <div className="page-subtitle">Pomodoro technique — work in 25-minute sprints.</div>
+          <div className="page-subtitle">
+            Work in {settings.focus}-minute sprints — fully customizable below.
+          </div>
+        </div>
+        <div className="header-actions">
+          <button className="btn" onClick={() => setSettingsOpen(true)}>
+            <Icon.Settings /> Customize
+          </button>
         </div>
       </div>
 
       <div className="panel lg">
         <div className="timer-wrap">
           <div className="timer-modes">
-            {Object.entries(MODES).map(([k, m]) => (
+            {Object.keys(LABELS).map((k) => (
               <button
                 key={k}
                 className={`timer-mode${mode === k ? ' active' : ''}`}
                 onClick={() => setMode(k)}
               >
-                {m.label}
+                {LABELS[k]} <span style={{ opacity: 0.6, marginLeft: 4, fontWeight: 500 }}>{settings[k]}m</span>
               </button>
             ))}
           </div>
@@ -111,20 +140,142 @@ export default function Focus({ onSessionComplete }) {
               />
             </svg>
             <div className="timer-time">{format(secs)}</div>
-            <div className="timer-label">{MODES[mode].label}</div>
+            <div className="timer-label">{LABELS[mode]}</div>
           </div>
 
           <div className="timer-controls">
             <button className="timer-btn" onClick={reset} title="Reset">
               <Icon.Reset />
             </button>
-            <button className="timer-btn primary" onClick={() => setRunning((r) => !r)} title={running ? 'Pause' : 'Start'}>
+            <button
+              className="timer-btn primary"
+              onClick={() => setRunning((r) => !r)}
+              title={running ? 'Pause' : 'Start'}
+            >
               {running ? <Icon.Pause /> : <Icon.Play />}
             </button>
             <button className="timer-btn" onClick={skip} title="Skip">
               <Icon.Skip />
             </button>
           </div>
+        </div>
+      </div>
+
+      {settingsOpen && (
+        <TimerSettings
+          settings={settings}
+          onChange={setSettings}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function TimerSettings({ settings, onChange, onClose }) {
+  const [draft, setDraft] = useState(settings)
+
+  const set = (key, value) => setDraft((d) => ({ ...d, [key]: value }))
+  const setMin = (key, raw) => {
+    const n = Math.max(1, Math.min(180, Number(raw) || 1))
+    set(key, n)
+  }
+
+  const apply = () => { onChange(draft); onClose() }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div className="modal-title">Customize timer</div>
+            <div className="modal-sub">Set durations in minutes (1–180).</div>
+          </div>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
+            <Icon.Close />
+          </button>
+        </div>
+
+        <div className="field">
+          <label className="field-label">Quick presets</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {PRESETS.map((p) => {
+              const isActive = draft.focus === p.focus && draft.short === p.short && draft.long === p.long
+              return (
+                <button
+                  key={p.name}
+                  type="button"
+                  className={`btn${isActive ? ' btn-primary' : ''}`}
+                  onClick={() => setDraft((d) => ({ ...d, focus: p.focus, short: p.short, long: p.long }))}
+                >
+                  {p.name} <span style={{ opacity: 0.7, marginLeft: 4, fontWeight: 500 }}>
+                    {p.focus}/{p.short}/{p.long}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="field" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+          <div>
+            <label className="field-label">Focus</label>
+            <input
+              className="input"
+              type="number"
+              min="1"
+              max="180"
+              value={draft.focus}
+              onChange={(e) => setMin('focus', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="field-label">Short break</label>
+            <input
+              className="input"
+              type="number"
+              min="1"
+              max="180"
+              value={draft.short}
+              onChange={(e) => setMin('short', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="field-label">Long break</label>
+            <input
+              className="input"
+              type="number"
+              min="1"
+              max="180"
+              value={draft.long}
+              onChange={(e) => setMin('long', e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="field-label">Options</label>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={draft.sound}
+              onChange={(e) => set('sound', e.target.checked)}
+            />
+            <span>Play a chime when the timer ends</span>
+          </label>
+        </div>
+
+        <div className="modal-footer">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => setDraft({ ...DEFAULTS })}
+          >
+            Reset to defaults
+          </button>
+          <button type="button" className="btn btn-primary" onClick={apply}>
+            Save
+          </button>
         </div>
       </div>
     </div>

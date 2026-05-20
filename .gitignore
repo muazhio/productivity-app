@@ -222,3 +222,10 @@ node_modules/
 .vite/
 *.log
 .DS_Store
+
+# The Python template above ignores top-level lib/ and build/.
+# Re-include our Vite source folders so app files are tracked.
+!src/lib/
+!src/lib/**
+!src/**/build/
+
