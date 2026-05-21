@@ -47,3 +47,12 @@ export function addDays(date, n) {
 export function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
 }
+
+// Pomodoro log entries may be the legacy shape (a plain number = session count,
+// before per-session minutes were tracked) or the new shape { sessions, minutes }.
+// Old entries are assumed to be 25-minute sessions for backfill purposes.
+export function normalizeFocusEntry(entry) {
+  if (!entry) return { sessions: 0, minutes: 0 }
+  if (typeof entry === 'number') return { sessions: entry, minutes: entry * 25 }
+  return { sessions: entry.sessions || 0, minutes: entry.minutes || 0 }
+}

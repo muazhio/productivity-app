@@ -71,14 +71,14 @@ export default function Focus({ onSessionComplete }) {
           clearInterval(timerRef.current)
           setRunning(false)
           if (settings.sound) ding()
-          if (mode === 'focus') onSessionComplete?.()
+          if (mode === 'focus') onSessionComplete?.(settings.focus)
           return 0
         }
         return s - 1
       })
     }, 1000)
     return () => clearInterval(timerRef.current)
-  }, [running, mode, onSessionComplete, settings.sound])
+  }, [running, mode, onSessionComplete, settings.sound, settings.focus])
 
   const total = settings[mode] * 60
   const progress = total === 0 ? 0 : (total - secs) / total
@@ -87,7 +87,14 @@ export default function Focus({ onSessionComplete }) {
   const offset = circumference - progress * circumference
 
   const reset = () => { setRunning(false); setSecs(settings[mode] * 60) }
-  const skip = () => { setRunning(false); setSecs(0); if (mode === 'focus') onSessionComplete?.() }
+  const skip = () => {
+    setRunning(false)
+    if (mode === 'focus') {
+      const elapsedMin = (settings.focus * 60 - secs) / 60
+      onSessionComplete?.(elapsedMin)
+    }
+    setSecs(0)
+  }
 
   return (
     <div className="fade-in">
