@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Icon } from './lib/icons'
 import { useHabits } from './lib/useHabits'
-import { STORAGE, load, save, todayKey, uid } from './lib/storage'
+import { STORAGE, load, save, todayKey, uid, normalizeFocusEntry } from './lib/storage'
 import HabitModal from './components/HabitModal'
 import Today from './views/Today'
 import Habits from './views/Habits'
@@ -37,14 +37,17 @@ export default function App() {
     setNotes((prev) => prev.filter((n) => n.id !== id))
   }, [])
 
-  const recordPomodoro = useCallback(() => {
+  const recordFocusSession = useCallback((minutes) => {
+    const m = Math.max(0, Math.round(minutes))
+    if (m < 1) return
     setPomodoroLog((prev) => {
       const k = todayKey()
-      return { ...prev, [k]: (prev[k] || 0) + 1 }
+      const cur = normalizeFocusEntry(prev[k])
+      return { ...prev, [k]: { sessions: cur.sessions + 1, minutes: cur.minutes + m } }
     })
   }, [])
 
-  const todayPomodoros = pomodoroLog[todayKey()] || 0
+  const todayFocus = normalizeFocusEntry(pomodoroLog[todayKey()])
 
   return (
     <div className="app">
@@ -84,7 +87,7 @@ export default function App() {
             onAdd={() => setQuickAddOpen(true)}
             recentNote={notes[0]}
             onAddNote={addNote}
-            pomodoroCount={todayPomodoros}
+            todayFocus={todayFocus}
           />
         )}
         {tab === 'habits' && (
@@ -102,7 +105,7 @@ export default function App() {
           <Notes notes={notes} onAdd={addNote} onDelete={deleteNote} />
         )}
         {tab === 'focus' && (
-          <Focus onSessionComplete={recordPomodoro} />
+          <Focus onSessionComplete={recordFocusSession} />
         )}
         {tab === 'stats' && (
           <Stats habits={habits} logs={logs} pomodoroLog={pomodoroLog} />

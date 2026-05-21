@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Icon } from '../lib/icons'
 import { isComplete, completionRatio, streakOf, longestStreak, completionPct } from '../lib/useHabits'
-import { todayKey } from '../lib/storage'
+import { todayKey, normalizeFocusEntry, dateFromKey } from '../lib/storage'
 
 function getYearGrid() {
   const days = []
@@ -17,8 +17,34 @@ function getYearGrid() {
   return days
 }
 
+function dayKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function formatMins(m) {
+  if (!m) return '0m'
+  const h = Math.floor(m / 60)
+  const r = m % 60
+  if (h === 0) return `${r}m`
+  if (r === 0) return `${h}h`
+  return `${h}h ${r}m`
+}
+
+function lastNDays(n) {
+  const days = []
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - i)
+    days.push(d)
+  }
+  return days
+}
+
 export default function Stats({ habits, logs, pomodoroLog }) {
   const [selectedHabitId, setSelectedHabitId] = useState('all')
+  const [focusRange, setFocusRange] = useState(14)
 
   const summary = useMemo(() => {
     if (habits.length === 0) return null
@@ -35,7 +61,7 @@ export default function Stats({ habits, logs, pomodoroLog }) {
 
   const heatmapValues = useMemo(() => {
     return days.map((d) => {
-      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      const k = dayKey(d)
       const dayLogs = logs[k] || {}
       const isFuture = d > new Date()
       if (selectedHabitId === 'all') {
@@ -68,14 +94,45 @@ export default function Stats({ habits, logs, pomodoroLog }) {
       })
     })
     const bestStreak = habits.reduce((m, h) => Math.max(m, longestStreak(h, logs)), 0)
-    const focusTotal = Object.values(pomodoroLog || {}).reduce((a, b) => a + b, 0)
+
+    let totalFocusMin = 0
+    let totalFocusSessions = 0
+    Object.values(pomodoroLog || {}).forEach((v) => {
+      const e = normalizeFocusEntry(v)
+      totalFocusMin += e.minutes
+      totalFocusSessions += e.sessions
+    })
+
     return {
       totalCompletions,
       activeDays: activeDays.size,
       bestStreak,
-      focusTotal,
+      totalFocusMin,
+      totalFocusSessions,
     }
   }, [logs, habits, pomodoroLog])
+
+  const focusChart = useMemo(() => {
+    const days = lastNDays(focusRange)
+    const points = days.map((d) => {
+      const k = dayKey(d)
+      const e = normalizeFocusEntry(pomodoroLog?.[k])
+      return { date: d, key: k, minutes: e.minutes, sessions: e.sessions }
+    })
+    const max = Math.max(60, ...points.map((p) => p.minutes))
+    const total = points.reduce((s, p) => s + p.minutes, 0)
+    const activeDayCount = points.filter((p) => p.minutes > 0).length
+    const avgActive = activeDayCount === 0 ? 0 : Math.round(total / activeDayCount)
+    const avgAll = Math.round(total / focusRange)
+    const best = points.reduce((b, p) => (p.minutes > b.minutes ? p : b), points[0])
+    return { points, max, total, avgActive, avgAll, activeDayCount, best }
+  }, [pomodoroLog, focusRange])
+
+  const todayFocus = normalizeFocusEntry(pomodoroLog?.[todayKey()])
+  const thisWeekFocus = useMemo(() => {
+    const days = lastNDays(7)
+    return days.reduce((sum, d) => sum + normalizeFocusEntry(pomodoroLog?.[dayKey(d)]).minutes, 0)
+  }, [pomodoroLog])
 
   return (
     <div className="fade-in">
@@ -100,14 +157,65 @@ export default function Stats({ habits, logs, pomodoroLog }) {
           <div className="stat-value">{overallStats.activeDays}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Focus sessions</div>
-          <div className="stat-value">{overallStats.focusTotal}</div>
+          <div className="stat-label">Total focus time</div>
+          <div className="stat-value">{formatMins(overallStats.totalFocusMin)}</div>
         </div>
       </div>
 
       <div className="panel lg" style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 16 }}>Focus time</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: 13, marginTop: 2 }}>
+              How long you spent learning, by day.
+            </div>
+          </div>
+          <div className="timer-modes" style={{ marginBottom: 0 }}>
+            {[7, 14, 30].map((n) => (
+              <button
+                key={n}
+                className={`timer-mode${focusRange === n ? ' active' : ''}`}
+                onClick={() => setFocusRange(n)}
+              >
+                {n}d
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="focus-summary">
+          <div className="focus-summary-cell">
+            <div className="focus-summary-label">Today</div>
+            <div className="focus-summary-val">{formatMins(todayFocus.minutes)}</div>
+            <div className="focus-summary-sub">{todayFocus.sessions} session{todayFocus.sessions === 1 ? '' : 's'}</div>
+          </div>
+          <div className="focus-summary-cell">
+            <div className="focus-summary-label">Last 7 days</div>
+            <div className="focus-summary-val">{formatMins(thisWeekFocus)}</div>
+            <div className="focus-summary-sub">{formatMins(Math.round(thisWeekFocus / 7))} / day avg</div>
+          </div>
+          <div className="focus-summary-cell">
+            <div className="focus-summary-label">Avg per active day</div>
+            <div className="focus-summary-val">{formatMins(focusChart.avgActive)}</div>
+            <div className="focus-summary-sub">{focusChart.activeDayCount} of {focusRange} days active</div>
+          </div>
+          <div className="focus-summary-cell">
+            <div className="focus-summary-label">Best day ({focusRange}d)</div>
+            <div className="focus-summary-val">{formatMins(focusChart.best?.minutes || 0)}</div>
+            <div className="focus-summary-sub">
+              {focusChart.best && focusChart.best.minutes > 0
+                ? focusChart.best.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                : 'no sessions yet'}
+            </div>
+          </div>
+        </div>
+
+        <FocusBarChart points={focusChart.points} max={focusChart.max} avg={focusChart.avgAll} />
+      </div>
+
+      <div className="panel lg" style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ fontWeight: 600, fontSize: 16 }}>Activity</div>
+          <div style={{ fontWeight: 600, fontSize: 16 }}>Habit activity</div>
           <select
             className="select"
             style={{ width: 'auto', padding: '8px 12px' }}
@@ -164,15 +272,65 @@ export default function Stats({ habits, logs, pomodoroLog }) {
         </div>
       )}
 
-      {habits.length === 0 && (
+      {habits.length === 0 && overallStats.totalFocusMin === 0 && (
         <div className="panel lg">
           <div className="empty">
             <div className="empty-icon"><Icon.Stats /></div>
             <div className="empty-title">No data yet</div>
-            <div>Add habits and check them off to see your progress here.</div>
+            <div>Add habits or run a focus session to start seeing stats.</div>
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function FocusBarChart({ points, max, avg }) {
+  const niceMax = Math.ceil(max / 30) * 30 || 30
+  const ticks = [0, niceMax / 2, niceMax]
+  const avgRatio = niceMax === 0 ? 0 : avg / niceMax
+
+  return (
+    <div className="bar-chart">
+      <div className="bar-chart-grid">
+        {ticks.slice().reverse().map((t) => (
+          <div className="bar-chart-tick" key={t}>
+            <span>{formatMins(t)}</span>
+            <div className="bar-chart-line" />
+          </div>
+        ))}
+        {avg > 0 && (
+          <div
+            className="bar-chart-avg"
+            style={{ bottom: `${avgRatio * 100}%` }}
+            title={`Average: ${formatMins(avg)}`}
+          >
+            <span>avg {formatMins(avg)}</span>
+          </div>
+        )}
+      </div>
+      <div className="bar-chart-bars">
+        {points.map((p, i) => {
+          const ratio = niceMax === 0 ? 0 : p.minutes / niceMax
+          const isToday = p.key === todayKey()
+          return (
+            <div className="bar-col" key={p.key} title={`${p.date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — ${formatMins(p.minutes)} (${p.sessions} session${p.sessions === 1 ? '' : 's'})`}>
+              <div className="bar-val">{p.minutes > 0 ? formatMins(p.minutes) : ''}</div>
+              <div className="bar-track">
+                <div
+                  className={`bar-fill${isToday ? ' today' : ''}${p.minutes === 0 ? ' empty' : ''}`}
+                  style={{ height: `${Math.max(p.minutes > 0 ? 3 : 0, ratio * 100)}%` }}
+                />
+              </div>
+              <div className={`bar-label${isToday ? ' today' : ''}`}>
+                {points.length <= 14
+                  ? p.date.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 1)
+                  : p.date.getDate()}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

@@ -18,7 +18,16 @@ function formatDate(d = new Date()) {
   return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
 }
 
-export default function Today({ habits, logs, onToggle, onInc, onAdd, recentNote, onAddNote, pomodoroCount }) {
+function formatMins(m) {
+  if (!m) return '0m'
+  const h = Math.floor(m / 60)
+  const r = m % 60
+  if (h === 0) return `${r}m`
+  if (r === 0) return `${h}h`
+  return `${h}h ${r}m`
+}
+
+export default function Today({ habits, logs, onToggle, onInc, onAdd, recentNote, onAddNote, todayFocus }) {
   const date = todayKey()
   const dayLogs = logs[date] || {}
 
@@ -103,9 +112,12 @@ export default function Today({ habits, logs, onToggle, onInc, onAdd, recentNote
         </div>
 
         <div className="stat-card">
-          <div className="stat-label">Focus sessions today</div>
+          <div className="stat-label">Focus time today</div>
           <div className="stat-value">
-            {pomodoroCount}<span className="stat-suffix">pomodoros</span>
+            {formatMins(todayFocus?.minutes || 0)}
+            <span className="stat-suffix">
+              · {todayFocus?.sessions || 0} session{(todayFocus?.sessions || 0) === 1 ? '' : 's'}
+            </span>
           </div>
         </div>
       </div>
